@@ -16,7 +16,7 @@ mongoose.connect('mongodb+srv://nicolascren:Mongodb@cluster0.3gfsltc.mongodb.net
   .catch(() => console.log('Connexion à MongoDB échouée !'));
 
 //CORS//
-app.get((req, res, next) => {
+app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content, Accept, Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -24,7 +24,7 @@ app.get((req, res, next) => {
   });
 
 // Rend les données exploitables en JSON //
-app.get(express.json());
+app.use(express.json());
 
 // middleware pour les images //
 app.use('/images', express.static(path.join(__dirname, 'images')));
