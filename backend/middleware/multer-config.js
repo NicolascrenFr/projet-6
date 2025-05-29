@@ -1,7 +1,7 @@
-const express = require("express");
-const multer = require("multer");
-const sharp = require("sharp");
-const fs = require("fs");
+const multer = require('multer');
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
 
 const MIME_TYPES = {
   'image/jpg': 'jpg',
@@ -10,86 +10,74 @@ const MIME_TYPES = {
   'image/webp': 'webp'
 };
 
-// Configuration du stockage Multer (en mémoire)
+// Configuration Multer améliorée
 const storage = multer.memoryStorage();
-const upload = multer({ 
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    // verifie que le MIME est autorisé //
-    const isValid = MIME_TYPES[file.mimetype];
-    if (isValid) {
-      cb(null, true);
-    } else {
-      cb(new Error('Type de fichier non supporté'), false);
-    }
+const fileFilter = (req, file, cb) => {
+  if (MIME_TYPES[file.mimetype]) {
+    cb(null, true);
+  } else {
+    cb(new Error('Type de fichier non supporté. Formats acceptés: JPG, PNG, WebP'), false);
   }
+};
+
+const upload = multer({ 
+  storage, 
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // Limite à 5MB
 }).single('image');
 
-// Middleware de traitement d'image
-const processImage = async (req, res, next) => {
-  // Si pas de fichier, on passe au middleware suivant
-  if (!req.file) {
-    return next();
-  }
-
+module.exports = async (req, res, next) => {
   try {
-    // Créer le dossier 'images' s'il n'existe pas
-    if (!fs.existsSync('./images')) {
-      fs.mkdirSync('./images');
+    // Gestion upload
+    await new Promise((resolve, reject) => {
+      upload(req, res, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+
+    if (!req.file) return next();
+
+    // Création dossier si inexistant
+    if (!fs.existsSync('images')) {
+      fs.mkdirSync('images', { recursive: true });
     }
 
-    // Préparation du nom de fichier
-    const timestamp = Date.now();
-    const originalName = req.file.originalname.replace(/\s+/g, '_');
-    const fileName = `${originalName.split('.')[0]}_${timestamp}.webp`;
+    // Génération nom de fichier sécurisé
+    const sanitizedName = req.file.originalname
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9_.-]/g, '');
+    
+    const fileName = `${path.parse(sanitizedName).name}_${Date.now()}.webp`;
+    const outputPath = path.join('images', fileName);
 
-    // Conversion en WebP avec qualité à 80%
+    // Conversion image
     await sharp(req.file.buffer)
-      .webp({ quality: 80 })
-      .toFile(`./images/${fileName}`);
+      .webp({ 
+        quality: 80,
+        lossless: false 
+      })
+      .toFile(outputPath);
 
-    // Ajout des informations de l'image traitée à la requête
-    req.processedImage = {
-      path: `./images/${fileName}`,
+    // Ajout infos à la requête
+    req.file = {
+      ...req.file,
+      path: outputPath,
       filename: fileName,
-      url: `/images/${fileName}`
+      webpUrl: `/images/${fileName}`
     };
 
     next();
   } catch (error) {
-    console.error("Erreur de traitement d'image:", error);
-    return res.status(500).json({ error: "Erreur lors du traitement de l'image" });
+    // Nettoyage en cas d'erreur
+    if (req.file?.filename) {
+      fs.unlink(path.join('images', req.file.filename), () => {});
+    }
+    res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400)
+       .json({ 
+         error: error.message.includes('Type de fichier') 
+           ? error.message 
+           : 'Erreur de traitement de l\'image' 
+       });
   }
-};
-
-// Exportation du middleware combiné
-module.exports = (req, res, next) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      return res.status(400).json({ error: err.message });
-    }
-    
-    if (!req.file) {
-      return next();
-    }
-
-    try {
-      if (!fs.existsSync('./images')) {
-        fs.mkdirSync('./images');
-      }
-
-      const timestamp = Date.now();
-      const originalName = req.file.originalname.replace(/\s+/g, '_');
-      const fileName = `${originalName.split('.')[0]}_${timestamp}.webp`;
-
-      await sharp(req.file.buffer)
-        .webp({ quality: 80 })
-        .toFile(`./images/${fileName}`);
-
-      req.file.filename = fileName;
-      next();
-    } catch (error) {
-      return res.status(500).json({ error: "Erreur de traitement de l'image" });
-    }
-  });
 };

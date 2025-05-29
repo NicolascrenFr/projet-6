@@ -11,5 +11,7 @@ router.post('/', auth, multer, booksCtrl.createBook); // Créer livre //
 router.get('/:id', booksCtrl.getOneBook); // obtenir un livre
 router.put('/:id', auth, multer, booksCtrl.modifyBook); // Mise à jour modif livre //
 router.delete('/:id', auth, booksCtrl.deleteBook); // Supprimer un livre //
+router.post('/:id/rating', auth, booksCtrl.rateBook); // Noter un livre //
+router.get('/bestrating', booksCtrl.getBestRatedBooks); // Top 3 des livres
 
 module.exports = router;
